@@ -3,6 +3,7 @@
 import os
 import rospy
 from std_msgs.msg import String
+from geometry_msgs.msg import Twist
 import azure.cognitiveservices.speech as speechsdk
 
 class VoiceCommandNode:
@@ -10,6 +11,7 @@ class VoiceCommandNode:
         # ROS node setup
         rospy.init_node('voice_command_node')
         self.cmd_pub = rospy.Publisher('/voice_commands', String, queue_size=10)
+        self.vel_pub = rospy.Publisher('/turtle1/cmd_vel', Twist, queue_size=10)
 
         # setup Azure Speech SDK
         self.speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('SPEECH_KEY'), endpoint=os.environ.get('ENDPOINT'))
@@ -25,15 +27,29 @@ class VoiceCommandNode:
         rospy.loginfo("Voice command node started. Listening for commands...")
         self.speech_recognizer.start_continuous_recognition()
 
-    def recognized_cb(self, evt):
-        recognized_text = evt.result.text.strip().lower()
-        rospy.loginfo(f"Recognised: {recognized_text}")
 
-        if recognized_text in ['turn left', 'turn right', 'move forward', 'stop']:
-            self.cmd_pub.publish(recognized_text)
-            rospy.loginfo(f"Published voice command: {recognized_text}")
-        else:
-            rospy.loginfo("Command not recognised as an action")
+    def recognized_cb(self, evt):
+        if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+            recognized_text = evt.result.text.strip().lower()
+            rospy.loginfo(f"Recognised: {recognized_text}")
+
+            twist = Twist()
+
+            if recognized_text == 'move forward.':
+                twist.linear.x = 2.0
+            elif recognized_text == 'turn left.':
+                twist.angular.z = 2.0
+            elif recognized_text == 'turn right.':
+                twist.angular.z = -2.0
+            elif recognized_text == 'stop.':
+                twist.linear.x = 0.0
+                twist.angualr.z = 0.0
+            else:
+                rospy.loginfo("Command not recognised as an action")
+                return
+            self.vel_pub.publish(twist)
+            rospy.loginfo(f"Published velocity command: {twist}")
+
 
     def stop_cb(self, evt):
         rospy.loginfo(f"Session stopped or cancelled: {evt}")

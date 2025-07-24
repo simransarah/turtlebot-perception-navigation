@@ -19,7 +19,17 @@ To run the files
 ```
 roscore
 ```
-2. Then in a separate terminal
+2. Then in a separate terminal, start up the turtlesim
+```
+rosrun turtlesim turtlesim_node
+```
+3. Then in another terminal, start the node to move the robot
 ```
 rosrun my_robot_voice voice_command_node.py
 ```
+
+The commands that work are
+- move forward
+- turn left
+- turn right
+- stop
