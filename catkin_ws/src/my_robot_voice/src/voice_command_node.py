@@ -34,6 +34,7 @@ class VoiceCommandNode:
             rospy.loginfo(f"Recognised: {recognized_text}")
 
             twist = Twist()
+            # rate = rospy.rate(10)
 
             if recognized_text == 'move forward.':
                 twist.linear.x = 2.0
@@ -44,6 +45,12 @@ class VoiceCommandNode:
             elif recognized_text == 'stop.':
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
+            elif recognized_text == 'circle.':
+                while not rospy.is_shutdown():
+                    twist.linear.x = 0.5
+                    twist.angular.z = 0.2
+                    self.vel_pub.publish(twist)
+                    # rate.sleep()
             else:
                 rospy.loginfo("Command not recognised as an action")
                 return
