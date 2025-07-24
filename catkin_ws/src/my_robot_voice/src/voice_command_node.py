@@ -43,7 +43,7 @@ class VoiceCommandNode:
                 twist.angular.z = -2.0
             elif recognized_text == 'stop.':
                 twist.linear.x = 0.0
-                twist.angualr.z = 0.0
+                twist.angular.z = 0.0
             else:
                 rospy.loginfo("Command not recognised as an action")
                 return
