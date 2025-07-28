@@ -19,9 +19,10 @@ To run the files
 ```
 roscore
 ```
-2. Then in a separate terminal, start up the turtlesim
+2. Then in a separate terminal, start the gazebo to run the tutlebot in the simulation
 ```
-rosrun turtlesim turtlesim_node
+export TURTLEBOT3_MODEL=burger
+roslaunch turtlebot3_gazebo turtlebot3_world.launch
 ```
 3. Then in another terminal, start the node to move the robot
 ```
