@@ -1,9 +1,9 @@
 <launch>
     <include file="$(find turtlebot3_gazebo)/launch/turtlebot3_world.launch"/>
-    <node name="object_detection_node" pkg="turtlebot_object_detection" type="object_detection_node.py" output="screen">
-        <param name="yolo_weights_path" value="$(find turtlebot_object_detection)/scripts/yolov4.weights"/>
-        <param name="yolo_config_path" value="$(find turtlebot_object_detection)/scripts/yolov4.cfg"/>
-        <param name="yolo_names_path" value="$(find turtlebot_object_detection)/scripts/coco.names"/>
+    <node name="object_detection_node" pkg="turtlebot-perception-navigation" type="object_detection_node.py" output="screen">
+        <param name="yolo_weights_path" value="$(find turtlebot-perception-navigation)/scripts/yolov4.weights"/>
+        <param name="yolo_config_path" value="$(find turtlebot-perception-navigation)/scripts/yolov4.cfg"/>
+        <param name="yolo_names_path" value="$(find turtlebot-perception-navigation)/scripts/coco.names"/>
     </node>
-    <node name="movement_node" pkg="turtlebot_object_detection" type="movement_node.py" output="screen"/>
+    <node name="movement_node" pkg="turtlebot-perception-navigation" type="movement_node.py" output="screen"/>
 </launch>
