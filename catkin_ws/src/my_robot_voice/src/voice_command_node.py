@@ -3,7 +3,6 @@
 import os
 import rospy
 from std_msgs.msg import String
-from geometry_msgs.msg import Twist
 import azure.cognitiveservices.speech as speechsdk
 
 class VoiceCommandNode:
@@ -11,8 +10,6 @@ class VoiceCommandNode:
         # ROS node setup
         rospy.init_node('voice_command_node')
         self.cmd_pub = rospy.Publisher('/voice_commands', String, queue_size=10)
-        # subscribe to the cmd vel of the robot
-        self.vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
 
         # setup Azure Speech SDK
         # this needs to be sourced (see README)
@@ -39,24 +36,23 @@ class VoiceCommandNode:
             recognized_text = evt.result.text.strip().lower() # get the dictation from the speech
             rospy.loginfo(f"Recognised: {recognized_text}")
 
-            twist = Twist()
+            message = ''
 
             # sees if commands are found
             # not case sensitive
             if 'move forward' in recognized_text.lower():
-                twist.linear.x = 2.0
+                message = 'move foward'
             elif 'turn left' in recognized_text.lower():
-                twist.angular.z = 2.0
+                message = 'turn left'
             elif 'turn right' in recognized_text.lower():
-                twist.angular.z = -2.0
+                message = 'turn right'
             elif 'stop' in recognized_text.lower():
-                twist.linear.x = 0.0
-                twist.angular.z = 0.0
+                message = 'stop'
             else:
                 rospy.loginfo("Command not recognised as an action")
                 return
-            self.vel_pub.publish(twist)
-            rospy.loginfo(f"Published velocity command: {twist}")
+            self.cmd_pub.publish(message)
+            rospy.loginfo(f"Published velocity command: {message}")
 
 
     def stop_cb(self, evt):
