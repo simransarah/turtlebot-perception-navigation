@@ -11,18 +11,22 @@ import geometry_msgs.msg
 
 class ObjectDetectionNode:
     def __init__(self):
+        # Tools for converting ROS messages to OpenCV images and for broadcasting transforms
         self.bridge = CvBridge()
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
 
+        # State variables to hold the latest synchronised data from the camera
         self.colour_image = None
         self.depth_image = None
         self.camera_info = None
 
+        # Load configurable parameters from the launch file
         weights_path = rospy.get_param('~yolo_weights_path')
         config_path = rospy.get_param('~yolo_config_path')
         names_path = rospy.get_param('~yolo_names_path')
         self.confidence_threshold = rospy.get_param('~confidence_threshold', 0.5)
 
+        # Load the YOLOv4 network using the provided paths
         self.labels = open(names_path).read().strip().split('\n')
         try:
             self.net = cv2.dnn.readNet(weights_path, config_path)
@@ -32,14 +36,19 @@ class ObjectDetectionNode:
             rospy.signal_shutdown("Failed to load YOLOv4 model")
             return
         
+        # Get the names of the output layers of the network
         ln = self.net.getLayerNames()
         try:
             self.output_layers = [ln[i[0] - 1] for i in self.net.getUnconnectedOutLayers()]
-        except IndexError:
+        except IndexError: # Compatibility for different OpenCV versions
             self.output_layers = [ln[i - 1] for i in self.net.getUnconnectedOutLayers()]
         
+        # Publisher for the annotated image (for visualisation)
         self.annotated_image_pub = rospy.Publisher('/annotated_image', Image, queue_size=1)
         
+        # --- Set up message_filters to synchronise camera topics ---
+        # This is important to make sure we process a colour image, depth image,
+        # and camera info that were all captured at around the same time.
         image_sub = message_filters.Subscriber('/camera/rgb/image_raw', Image)
         depth_sub = message_filters.Subscriber('/camera/depth/image_raw', Image)
         info_sub = message_filters.Subscriber('/camera/rgb/camera_info', CameraInfo)
@@ -47,11 +56,13 @@ class ObjectDetectionNode:
         ts = message_filters.ApproximateTimeSynchronizer(
             [image_sub, depth_sub, info_sub], queue_size=10, slop=0.1
         )
+        # Register the single callback that will be triggered with synchronised messages
         ts.registerCallback(self.image_processing_callback)
         
         rospy.loginfo("Object detection node started")
 
     def image_processing_callback(self, rgb_msg, depth_msg, camera_info_msg):
+        # Convert the incoming ROS messages to OpenCV format
         try:
             self.colour_image = self.bridge.imgmsg_to_cv2(rgb_msg, "bgr8")
             self.depth_image = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding='32FC1')
@@ -62,21 +73,26 @@ class ObjectDetectionNode:
         
         height, width = self.colour_image.shape[:2]
 
+        # Prepare the image for the neural network
         blob = cv2.dnn.blobFromImage(self.colour_image, 1/255.0, (416, 416), swapRB=True, crop=False)
         self.net.setInput(blob)
         detections = self.net.forward(self.output_layers)
 
+        # Lists to hold all the detected boxes, confidences, and class IDs
         boxes = []
         confidences = []
         class_ids = []
 
+        # Loop through all the raw detections from the network output
         for output in detections:
             for detection in output:
                 scores = detection[5:]
                 class_id = np.argmax(scores)
                 confidence = scores[class_id]
 
+                # Filter out weak detections
                 if confidence > self.confidence_threshold:
+                    # Scale the bounding box coordinates back to the original image size
                     centre_x = int(detection[0] * width)
                     centre_y = int(detection[1] * height)
                     w = int(detection[2] * width)
@@ -88,18 +104,24 @@ class ObjectDetectionNode:
                     confidences.append(float(confidence))
                     class_ids.append(class_id)
         
+        # Apply Non-Maximum Suppression to remove redundant/overlapping boxes
         indices = cv2.dnn.NMSBoxes(boxes, confidences, self.confidence_threshold, 0.4)
 
+        # If we have any good detections left, process them
         if len(indices) > 0:
             for i in indices.flatten():
                 (x, y, w, h) = boxes[i]
+                
+                # Calculate the 3D position and publish the TF transform
                 self.process_detection(class_ids[i], x, y, w, h)
 
+                # Draw the bounding box and label on the image for visualisation
                 colour = (0, 255, 0)
                 cv2.rectangle(self.colour_image, (x, y), (x + w, y + h), colour, 2)
                 text = f"{self.labels[class_ids[i]]}: {confidences[i]:.2f}"
                 cv2.putText(self.colour_image, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 2)
 
+        # Publish the final annotated image
         try:
             annotated_msg = self.bridge.cv2_to_imgmsg(self.colour_image, "bgr8")
             self.annotated_image_pub.publish(annotated_msg)
@@ -107,24 +129,30 @@ class ObjectDetectionNode:
             rospy.logerr(f"Failed to publish annotated image: {str(e)}")
 
     def process_detection(self, class_id, x, y, w, h):
+        # Calculate the centre point of the bounding box
         centroid_x = x + w // 2
         centroid_y = y + h // 2
 
+        # Make sure the centroid is within the image boundaries
         if not (0 <= centroid_y < self.depth_image.shape[0] and 0 <= centroid_x < self.depth_image.shape[1]):
             rospy.logwarn("Centroid out of image bounds")
             return
         
+        # Get the depth value at the centroid from the depth image
         depth = self.depth_image[centroid_y, centroid_x]
 
+        # Check for invalid depth values 
         if not np.isfinite(depth) or depth <= 0:
             rospy.logwarn("Invalid depth value")
             return
         
+        # Get the camera's intrinsic parameters from the camera_info message
         fx = self.camera_info.K[0]
         fy = self.camera_info.K[4]
         cx = self.camera_info.K[2]
         cy = self.camera_info.K[5]
 
+        # Use the projection formula to convert the 2D pixel to a 3D point
         z_3d = float(depth)
         x_3d = (centroid_x - cx) * z_3d / fx
         y_3d = (centroid_y - cy) * z_3d / fy
@@ -133,21 +161,28 @@ class ObjectDetectionNode:
         self.publish_transform(x_3d, y_3d, z_3d, object_name)
 
     def publish_transform(self, x, y, z, object_name):
+        # Create a TransformStamped message to broadcast
         t = geometry_msgs.msg.TransformStamped()
+        
+        # Use the timestamp from the original camera data for consistency
         t.header.stamp = self.camera_info.header.stamp
+        # The transform is from the camera's frame to the new object's frame
         t.header.frame_id = self.camera_info.header.frame_id
         t.child_frame_id = f"object_{object_name.strip()}"
 
+        # Set the 3D position of the object
         t.transform.translation.x = x
         t.transform.translation.y = y
         t.transform.translation.z = z
         
+        # Set the orientation to a default 
         q = tf.transformations.quaternion_from_euler(0, 0, 0)
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]
         t.transform.rotation.w = q[3]
 
+        # Broadcast the transform to the TF tree
         self.tf_broadcaster.sendTransform(t)
         rospy.loginfo(f"Published transform for {object_name}")
 
@@ -161,4 +196,5 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
+    # Standard entry point for a Python ROS node
     main()
