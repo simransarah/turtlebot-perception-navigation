@@ -40,27 +40,18 @@ class VoiceCommandNode:
             rospy.loginfo(f"Recognised: {recognized_text}")
 
             twist = Twist()
-            # rate = rospy.rate(10)
 
-            # program the commands for moving
-            # need the full stop for some reason
-            # TODO add more semantics, so if the phrase is similar to this 
-
-            if recognized_text == 'move forward.':
+            # sees if commands are found
+            # not case sensitive
+            if 'move forward' in recognized_text.lower():
                 twist.linear.x = 2.0
-            elif recognized_text == 'turn left.':
+            elif 'turn left' in recognized_text.lower():
                 twist.angular.z = 2.0
-            elif recognized_text == 'turn right.':
+            elif 'turn right' in recognized_text.lower():
                 twist.angular.z = -2.0
-            elif recognized_text == 'stop.':
+            elif 'stop' in recognized_text.lower():
                 twist.linear.x = 0.0
                 twist.angular.z = 0.0
-            elif recognized_text == 'circle.':
-                while not rospy.is_shutdown():
-                    twist.linear.x = 0.5
-                    twist.angular.z = 0.2
-                    self.vel_pub.publish(twist)
-                    # rate.sleep()
             else:
                 rospy.loginfo("Command not recognised as an action")
                 return
