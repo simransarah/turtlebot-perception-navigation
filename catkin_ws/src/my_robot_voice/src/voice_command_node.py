@@ -41,7 +41,7 @@ class VoiceCommandNode:
             # sees if commands are found
             # not case sensitive
             if 'move forward' in recognized_text.lower():
-                message = 'move foward'
+                message = 'move forward'
             elif 'turn left' in recognized_text.lower():
                 message = 'turn left'
             elif 'turn right' in recognized_text.lower():
