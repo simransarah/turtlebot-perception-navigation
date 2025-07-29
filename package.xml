@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>turtlebot_object_detection</name>
+  <name>turtlebot-perception-navigation</name>
   <version>0.0.0</version>
-  <description>The turtlebot_object_detection package</description>
+  <description>The turtlebot-perception-navigation package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
