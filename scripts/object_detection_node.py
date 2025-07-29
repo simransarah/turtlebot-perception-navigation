@@ -12,20 +12,16 @@ from ultralytics import YOLO
 
 class ObjectDetectionNode:
     def __init__(self):
-        # Tools for converting ROS messages to OpenCV images and for broadcasting transforms
+        # Tools for converting ROS messages and broadcasting transforms
         self.bridge = CvBridge()
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
-
-        # State variables to hold the latest synchronised data from the camera
-        self.colour_image = None
-        self.depth_image = None
-        self.camera_info = None
 
         # Load configurable parameters from the launch file
         model_path = rospy.get_param('~yolo_model_path')
         self.confidence_threshold = rospy.get_param('~confidence_threshold', 0.5)
+        self.tf_prefix = rospy.get_param('~tf_prefix', 'object_')
 
-        # Load the YOLOv8 model using the ultralytics library
+        # Load the YOLOv8 model
         try:
             self.model = YOLO(model_path)
             rospy.loginfo("YOLOv8 model loaded successfully!")
@@ -58,33 +54,34 @@ class ObjectDetectionNode:
             rospy.logerr(f"Image conversion error: {str(e)}")
             return
         
-        # Perform detection with YOLOv8
-        results = self.model.track(self.colour_image, persist=True, conf=self.confidence_threshold, verbose=False)
+        # Use the object tracker for stable detections
+        results = self.model.track(colour_image, persist=True, conf=self.confidence_threshold, verbose=False)
 
         # Loop through the results from the model
         for result in results:
             for box in result.boxes:
                 # Extract data from the bounding box
                 class_id = int(box.cls[0])
-                label = self.model.names[class_id] 
+                label = self.model.names[class_id]
                 x_center, y_center, w, h = box.xywh[0].cpu().numpy().astype(int)
                 x1 = x_center - w // 2
                 y1 = y_center - h // 2
 
-                # Ensure the bounding box is within image bounds
+                # Calculate 3D position and publish the TF transform
                 self.process_detection(label, x1, y1, w, h, depth_image, camera_info_msg)
 
                 # Draw visualisation on the image
                 colour = (0, 255, 0)
                 cv2.rectangle(colour_image, (x1, y1), (x1 + w, y1 + h), colour, 2)
                 
+                # Create the label text, including the track ID if available
                 if box.id is not None: 
                     track_id = int(box.id[0])
                     text = f"ID {track_id}: {label}: {float(box.conf[0]):.2f}"
                 else:
                     text = f"{label}: {float(box.conf[0]):.2f}"
 
-                cv2.putText(self.colour_image, text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 2)
+                cv2.putText(colour_image, text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 2)
 
         # Publish the annotated image
         try:
@@ -93,48 +90,45 @@ class ObjectDetectionNode:
         except CvBridgeError as e:
             rospy.logerr(f"Failed to publish annotated image: {str(e)}")
 
-    def process_detection(self, class_id, x, y, w, h):
+    def process_detection(self, object_name, x, y, w, h, depth_image, camera_info):
         # Calculate the centre point of the bounding box
         centroid_x = x + w // 2
         centroid_y = y + h // 2
 
         # Make sure the centroid is within the image boundaries
-        if not (0 <= centroid_y < self.depth_image.shape[0] and 0 <= centroid_x < self.depth_image.shape[1]):
+        if not (0 <= centroid_y < depth_image.shape[0] and 0 <= centroid_x < depth_image.shape[1]):
             rospy.logwarn("Centroid out of image bounds")
             return
         
-        # Get the depth value at the centroid from the depth image
-        depth = self.depth_image[centroid_y, centroid_x]
+        # Get the depth value at the centroid
+        depth = depth_image[centroid_y, centroid_x]
 
         # Check for invalid depth values
         if not np.isfinite(depth) or depth <= 0:
-            rospy.logwarn("Invalid depth value")
+            rospy.logwarn(f"Invalid depth for {object_name}: {depth}")
             return
         
-        # Get the camera's intrinsic parameters from the camera_info message
-        fx = self.camera_info.K[0]
-        fy = self.camera_info.K[4]
-        cx = self.camera_info.K[2]
-        cy = self.camera_info.K[5]
+        # Get camera intrinsics from the CameraInfo message
+        fx = camera_info.K[0]
+        fy = camera_info.K[4]
+        cx = camera_info.K[2]
+        cy = camera_info.K[5]
 
-        # Use the projection formula to convert the 2D pixel to a 3D point
+        # Project 2D pixel to 3D point
         z_3d = float(depth)
         x_3d = (centroid_x - cx) * z_3d / fx
         y_3d = (centroid_y - cy) * z_3d / fy
 
-        # Get the object's label from the model's names list
-        object_name = self.model.names[class_id]
-        self.publish_transform(x_3d, y_3d, z_3d, object_name)
+        # Pass all necessary data to the transform publisher
+        self.publish_transform(x_3d, y_3d, z_3d, object_name, camera_info.header)
 
-    def publish_transform(self, x, y, z, object_name):
+    def publish_transform(self, x, y, z, object_name, header):
         # Create a TransformStamped message to broadcast
         t = geometry_msgs.msg.TransformStamped()
         
-        # Use the timestamp from the original camera data for consistency
-        t.header.stamp = self.camera_info.header.stamp
-        # The transform is from the camera's frame to the new object's frame
-        t.header.frame_id = self.camera_info.header.frame_id
-        t.child_frame_id = f"object_{object_name.strip()}"
+        t.header.stamp = header.stamp
+        t.header.frame_id = header.frame_id
+        t.child_frame_id = f"{self.tf_prefix}{object_name.strip()}"
 
         # Set the 3D position of the object
         t.transform.translation.x = x
