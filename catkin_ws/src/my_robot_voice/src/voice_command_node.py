@@ -52,7 +52,7 @@ class VoiceCommandNode:
                 rospy.loginfo("Command not recognised as an action")
                 return
             self.cmd_pub.publish(message)
-            rospy.loginfo(f"Published velocity command: {message}")
+            rospy.loginfo(f"Published command: {message}")
 
 
     def stop_cb(self, evt):
