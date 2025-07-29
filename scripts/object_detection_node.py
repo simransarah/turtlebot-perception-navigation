@@ -8,6 +8,7 @@ import message_filters
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge, CvBridgeError
 import geometry_msgs.msg
+from ultralytics import YOLO
 
 class ObjectDetectionNode:
     def __init__(self):
@@ -21,34 +22,22 @@ class ObjectDetectionNode:
         self.camera_info = None
 
         # Load configurable parameters from the launch file
-        weights_path = rospy.get_param('~yolo_weights_path')
-        config_path = rospy.get_param('~yolo_config_path')
-        names_path = rospy.get_param('~yolo_names_path')
+        model_path = rospy.get_param('~yolo_model_path')
         self.confidence_threshold = rospy.get_param('~confidence_threshold', 0.5)
 
-        # Load the YOLOv4 network using the provided paths
-        self.labels = open(names_path).read().strip().split('\n')
+        # Load the YOLOv8 model using the ultralytics library
         try:
-            self.net = cv2.dnn.readNet(weights_path, config_path)
-            rospy.loginfo("YOLOv4 model loaded successfully!")
-        except cv2.error as e:
-            rospy.logerr(f"Failed to load YOLOv4 network :/): {str(e)}")
-            rospy.signal_shutdown("Failed to load YOLOv4 model")
+            self.model = YOLO(model_path)
+            rospy.loginfo("YOLOv8 model loaded successfully!")
+        except Exception as e:
+            rospy.logerr(f"Failed to load YOLOv8 model: {str(e)}")
+            rospy.signal_shutdown("Failed to load YOLOv8 model")
             return
-        
-        # Get the names of the output layers of the network
-        ln = self.net.getLayerNames()
-        try:
-            self.output_layers = [ln[i[0] - 1] for i in self.net.getUnconnectedOutLayers()]
-        except IndexError: # Compatibility for different OpenCV versions
-            self.output_layers = [ln[i - 1] for i in self.net.getUnconnectedOutLayers()]
         
         # Publisher for the annotated image (for visualisation)
         self.annotated_image_pub = rospy.Publisher('/annotated_image', Image, queue_size=1)
         
-        # --- Set up message_filters to synchronise camera topics ---
-        # This is important to make sure we process a colour image, depth image,
-        # and camera info that were all captured at around the same time.
+        # Set up message_filters to synchronise camera topics
         image_sub = message_filters.Subscriber('/camera/rgb/image_raw', Image)
         depth_sub = message_filters.Subscriber('/camera/depth/image_raw', Image)
         info_sub = message_filters.Subscriber('/camera/rgb/camera_info', CameraInfo)
@@ -56,7 +45,6 @@ class ObjectDetectionNode:
         ts = message_filters.ApproximateTimeSynchronizer(
             [image_sub, depth_sub, info_sub], queue_size=10, slop=0.1
         )
-        # Register the single callback that will be triggered with synchronised messages
         ts.registerCallback(self.image_processing_callback)
         
         rospy.loginfo("Object detection node started")
@@ -64,66 +52,43 @@ class ObjectDetectionNode:
     def image_processing_callback(self, rgb_msg, depth_msg, camera_info_msg):
         # Convert the incoming ROS messages to OpenCV format
         try:
-            self.colour_image = self.bridge.imgmsg_to_cv2(rgb_msg, "bgr8")
-            self.depth_image = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding='32FC1')
-            self.camera_info = camera_info_msg
+            colour_image = self.bridge.imgmsg_to_cv2(rgb_msg, "bgr8")
+            depth_image = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding='32FC1')
         except CvBridgeError as e:
             rospy.logerr(f"Image conversion error: {str(e)}")
             return
         
-        height, width = self.colour_image.shape[:2]
+        # Perform detection with YOLOv8
+        results = self.model.track(self.colour_image, persist=True, conf=self.confidence_threshold, verbose=False)
 
-        # Prepare the image for the neural network
-        blob = cv2.dnn.blobFromImage(self.colour_image, 1/255.0, (416, 416), swapRB=True, crop=False)
-        self.net.setInput(blob)
-        detections = self.net.forward(self.output_layers)
+        # Loop through the results from the model
+        for result in results:
+            for box in result.boxes:
+                # Extract data from the bounding box
+                class_id = int(box.cls[0])
+                label = self.model.names[class_id] 
+                x_center, y_center, w, h = box.xywh[0].cpu().numpy().astype(int)
+                x1 = x_center - w // 2
+                y1 = y_center - h // 2
 
-        # Lists to hold all the detected boxes, confidences, and class IDs
-        boxes = []
-        confidences = []
-        class_ids = []
+                # Ensure the bounding box is within image bounds
+                self.process_detection(label, x1, y1, w, h, depth_image, camera_info_msg)
 
-        # Loop through all the raw detections from the network output
-        for output in detections:
-            for detection in output:
-                scores = detection[5:]
-                class_id = np.argmax(scores)
-                confidence = scores[class_id]
-
-                # Filter out weak detections
-                if confidence > self.confidence_threshold:
-                    # Scale the bounding box coordinates back to the original image size
-                    centre_x = int(detection[0] * width)
-                    centre_y = int(detection[1] * height)
-                    w = int(detection[2] * width)
-                    h = int(detection[3] * height)
-                    x = int(centre_x - w / 2)
-                    y = int(centre_y - h / 2)
-                    
-                    boxes.append([x, y, w, h])
-                    confidences.append(float(confidence))
-                    class_ids.append(class_id)
-        
-        # Apply Non-Maximum Suppression to remove redundant/overlapping boxes
-        indices = cv2.dnn.NMSBoxes(boxes, confidences, self.confidence_threshold, 0.4)
-
-        # If we have any good detections left, process them
-        if len(indices) > 0:
-            for i in indices.flatten():
-                (x, y, w, h) = boxes[i]
-                
-                # Calculate the 3D position and publish the TF transform
-                self.process_detection(class_ids[i], x, y, w, h)
-
-                # Draw the bounding box and label on the image for visualisation
+                # Draw visualisation on the image
                 colour = (0, 255, 0)
-                cv2.rectangle(self.colour_image, (x, y), (x + w, y + h), colour, 2)
-                text = f"{self.labels[class_ids[i]]}: {confidences[i]:.2f}"
-                cv2.putText(self.colour_image, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 2)
+                cv2.rectangle(colour_image, (x1, y1), (x1 + w, y1 + h), colour, 2)
+                
+                if box.id is not None: 
+                    track_id = int(box.id[0])
+                    text = f"ID {track_id}: {label}: {float(box.conf[0]):.2f}"
+                else:
+                    text = f"{label}: {float(box.conf[0]):.2f}"
 
-        # Publish the final annotated image
+                cv2.putText(self.colour_image, text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colour, 2)
+
+        # Publish the annotated image
         try:
-            annotated_msg = self.bridge.cv2_to_imgmsg(self.colour_image, "bgr8")
+            annotated_msg = self.bridge.cv2_to_imgmsg(colour_image, "bgr8")
             self.annotated_image_pub.publish(annotated_msg)
         except CvBridgeError as e:
             rospy.logerr(f"Failed to publish annotated image: {str(e)}")
@@ -141,7 +106,7 @@ class ObjectDetectionNode:
         # Get the depth value at the centroid from the depth image
         depth = self.depth_image[centroid_y, centroid_x]
 
-        # Check for invalid depth values 
+        # Check for invalid depth values
         if not np.isfinite(depth) or depth <= 0:
             rospy.logwarn("Invalid depth value")
             return
@@ -157,7 +122,8 @@ class ObjectDetectionNode:
         x_3d = (centroid_x - cx) * z_3d / fx
         y_3d = (centroid_y - cy) * z_3d / fy
 
-        object_name = self.labels[class_id]
+        # Get the object's label from the model's names list
+        object_name = self.model.names[class_id]
         self.publish_transform(x_3d, y_3d, z_3d, object_name)
 
     def publish_transform(self, x, y, z, object_name):
@@ -175,7 +141,7 @@ class ObjectDetectionNode:
         t.transform.translation.y = y
         t.transform.translation.z = z
         
-        # Set the orientation to a default 
+        # Set the orientation to a default (no rotation)
         q = tf.transformations.quaternion_from_euler(0, 0, 0)
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
