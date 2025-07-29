@@ -40,13 +40,13 @@ class VoiceCommandNode:
 
             # sees if commands are found
             # not case sensitive
-            if 'move forward' in recognized_text.lower():
+            if 'move forward' in recognized_text:
                 message = 'move forward'
-            elif 'turn left' in recognized_text.lower():
+            elif 'turn left' in recognized_text:
                 message = 'turn left'
-            elif 'turn right' in recognized_text.lower():
+            elif 'turn right' in recognized_text:
                 message = 'turn right'
-            elif 'stop' in recognized_text.lower():
+            elif 'stop' in recognized_text:
                 message = 'stop'
             else:
                 rospy.loginfo("Command not recognised as an action")
