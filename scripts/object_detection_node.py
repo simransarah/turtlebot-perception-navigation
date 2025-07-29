@@ -196,5 +196,4 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    # Standard entry point for a Python ROS node
     main()
