@@ -25,6 +25,10 @@ export TURTLEBOT3_MODEL=burger
 roslaunch turtlebot3_gazebo turtlebot3_world.launch
 ```
 3. Then in another terminal, start the node to move the robot
+might need to source this first with
+```
+source catkin_ws/devel/setup.bash
+```
 ```
 rosrun my_robot_voice voice_command_node.py
 ```
