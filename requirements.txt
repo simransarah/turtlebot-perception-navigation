@@ -1,0 +1,4 @@
+# requirements.txt
+ultralytics
+numpy
+opencv-python
