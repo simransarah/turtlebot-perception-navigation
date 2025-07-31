@@ -18,7 +18,7 @@ class ObjectDetectionNode:
 
         # Load configurable parameters from the launch file
         model_path = rospy.get_param('~yolo_model_path')
-        self.confidence_threshold = rospy.get_param('~confidence_threshold', 0.5)
+        self.confidence_threshold = rospy.get_param('~confidence_threshold', 0.25)
         self.tf_prefix = rospy.get_param('~tf_prefix', 'object_')
 
         # Load the YOLOv8 model
