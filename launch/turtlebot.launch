@@ -5,4 +5,5 @@
         <param name="confidence_threshold" value="0.25" />
     </node>
     <node name="movement_node" pkg="turtlebot-perception-navigation" type="movement_node.py" output="screen"/>
+    <node name="voice_command_node" pkg="turtlebot-perception-navigation" type="voice_command_node.py" output="screen"/>
 </launch>

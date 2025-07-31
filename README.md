@@ -60,55 +60,27 @@ To run the object detection node, use the launch file that starts the Gazebo sim
 ```bash
 cd ~/catkin_ws/
 source devel/setup.bash
-roslaunch turtlebot-perception-navigation turtlebot_object_detection.launch
+export TURTLEBOT3_MODEL=waffle
+roslaunch turtlebot-perception-navigation turtlebot.launch
 ```
 
 ### 2. Verify the Output
 
-To verify that the node is working:
+To verify that the object detection node is working:
 
 - **Visualisation**: View the camera feed with detection boxes:
 
 ```bash
 rqt_image_view /annotated_image
 ```
-# Voice detection
 
-Libraries required
-- Speech SDK
+To verify that the voice command node is working:
 
-```
-pip install azure-cognitiveservices-speech
-```
-Also need to get API key and Endpoint, then source the environment variables in the .bashrc file
-```
-export SPEECH_KEY=your-key
-export ENDPOINT=your-endpoint
-```
-The transcribing is done through accessing the Microsoft Azure Speech API
-
-To run the files
-
-1. Start roscore
-```
-roscore
-```
-2. Then in a separate terminal, start the gazebo to run the tutlebot in the simulation
-```
-export TURTLEBOT3_MODEL=burger
-roslaunch turtlebot3_gazebo turtlebot3_world.launch
-```
-3. Then in another terminal, start the node to move the robot
-might need to source this first with
-```
-source catkin_ws/devel/setup.bash
-```
-```
-rosrun turtlebot-perception-navigation voice_command_node.py
-```
+- Try a command like 'go forward', test whether this makes the turtlebot move in the Gazebo simulation
 
 The commands that work are
-- move forward
+- go forward
 - turn left
 - turn right
 - stop
+- go to the {object}
