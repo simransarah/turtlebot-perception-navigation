@@ -79,7 +79,7 @@ To verify that the voice command node is working:
 - Try a command like 'go forward', test whether this makes the turtlebot move in the Gazebo simulation
 
 The commands that work are
-- move forward
+- go forward
 - turn left
 - turn right
 - stop
