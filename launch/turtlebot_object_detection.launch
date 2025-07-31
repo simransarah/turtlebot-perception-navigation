@@ -1,0 +1,8 @@
+<launch>
+    <include file="$(find turtlebot3_gazebo)/launch/turtlebot3_world.launch"/>
+    <node name="object_detection_node" pkg="turtlebot-perception-navigation" type="object_detection_node.py" output="screen">
+        <param name="yolo_model_path" value="$(find turtlebot-perception-navigation)/yolo/yolov8n.pt"/>
+        <param name="confidence_threshold" value="0.5" />
+    </node>
+    <node name="movement_node" pkg="turtlebot-perception-navigation" type="movement_node.py" output="screen"/>
+</launch>
