@@ -36,6 +36,7 @@ class MovementNode:
         
         # Any new command should cancel the "go to object" navigation mode
         self.is_navigating = False
+        self.is_centring = False
         
         # Handle simple, direct movement commands
         if command == "go forward":
@@ -59,6 +60,11 @@ class MovementNode:
             self.target_object_name = command.split("go to the")[1].strip()
             self.is_navigating = True 
             rospy.loginfo(f"Targeting object: '{self.target_object_name}'")
+        elif command.startswith("centre on"):
+            self.move_cmd = Twist()
+            self.target_object_name = command.split("centre on")[1].strip()
+            self.is_centring = True
+            rospy.loginfo(f"Centred on object: '{self.target_object_name}'")
         else:
             rospy.logwarn(f"Unknown command: '{command}'")
 
