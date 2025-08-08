@@ -17,7 +17,7 @@ class MovementNode:
         self.move_cmd = Twist()     
 
         # Load configurable parameters from the launch file, with default values
-        self.base_frame = rospy.get_param('~base_frame', 'base_link')
+        self.base_frame = rospy.get_param('~base_footprint', 'base_link')
         self.stop_distance = rospy.get_param('~stop_distance', 0.5)
         self.max_linear_speed = rospy.get_param('~max_linear_speed', 0.3)
         self.max_angular_speed = rospy.get_param('~max_angular_speed', 0.8)
