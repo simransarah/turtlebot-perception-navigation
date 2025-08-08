@@ -53,6 +53,9 @@ class VoiceCommandNode:
             elif 'go to the' in recognized_text:
                 index = recognized_text.find('go to the') # find where this substring starts
                 message = recognized_text[index:] # get the string 
+            elif 'centre on' in recognized_text:
+                index = recognized_text.find('centre on')
+                message = recognized_text[index:]
             else:
                 rospy.loginfo("Command not recognised as an action")
                 return

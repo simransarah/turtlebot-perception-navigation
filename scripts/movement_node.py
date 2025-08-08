@@ -14,6 +14,7 @@ class MovementNode:
         # State variables to manage what the robot is doing
         self.target_object_name = None
         self.is_navigating = False  
+        self.is_centring = False
         self.move_cmd = Twist()     
 
         # Load configurable parameters from the launch file, with default values
@@ -104,6 +105,36 @@ class MovementNode:
                 # If we can't find the object's transform, log a warning and stop
                 rospy.logwarn(f"Transform error for '{self.target_object_name}': {e}")
                 self.cmd_vel_pub.publish(Twist()) 
+        elif self.is_centring:
+            # Logic for when the robot is centring on an object
+            if self.target_object_name is None:
+                return
+            
+            target_tf_frame = f"object_{self.target_object_name}"
+            try:
+                # Get the latest transform between the robot's base and the object
+                transform = self.tf_buffer.lookup_transform(
+                    'base_footprint', target_tf_frame, rospy.Time(0), rospy.Duration(1.0)
+                )
+                # Calculate angle to the target (object)
+                x = transform.transform.translation.x
+                y = transform.transform.translation.y
+                angle_to_target = math.atan2(y, x)
+
+                twist = Twist()
+                # Only rotate to center the object, do not move forward
+                if abs(angle_to_target) > 0.05:  # Tolerance for centering (radians)
+                    twist.angular.z = max(min(1.0 * angle_to_target, self.max_angular_speed), -self.max_angular_speed)
+                else:
+                    twist.angular.z = 0.0
+                    rospy.loginfo(f"Object '{self.target_object_name}' centered.")
+                    self.is_centring = False  # Stop centering once done
+
+                self.cmd_vel_pub.publish(twist)
+
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+                rospy.logwarn(f"Transform error for '{self.target_object_name}': {e}")
+                self.cmd_vel_pub.publish(Twist())
         else:
             # If not navigating, just publish the velocity from the simple commands
             self.cmd_vel_pub.publish(self.move_cmd)
