@@ -127,9 +127,9 @@ class MovementNode:
             glance_angle_rad = math.pi / 12 # 15 degrees
 
             # Calculates the final angle for the virtual target
-            if relation == "left of":
+            if "left of" in relation:
                 final_angle = angle_to_real_object + glance_angle_rad
-            elif relation == "right of":
+            elif "right of" in relation:
                 final_angle = angle_to_real_object - glance_angle_rad
             else:
                 rospy.logwarn(f"Relation '{relation}' not implemented.")
