@@ -92,9 +92,14 @@ class VoiceCommandNode:
                 command["relation"] = entity_value
 
         # Validation
-        if command.get("action") in ["adjust_view", "centre", "navigate"] and "target" not in command and "direction" not in command:
-            rospy.logwarn(f"Command '{command.get('action')}' requires a target or direction, but CLU did not identify one. Command aborted.")
-            return 
+        action = command.get("action")
+        if action == "adjust_view" and ("target" not in command or "relation" not in command):
+            rospy.logwarn(f"Command '{action}' requires a target and relation, but CLU did not identify them.")
+            return
+
+        if action in ["centre", "navigate"] and "target" not in command and "direction" not in command:
+            rospy.logwarn(f"Command '{action}' requires a target or direction, but CLU did not identify one.")
+            return
 
         if command["action"]:
             self.cmd_pub.publish(json.dumps(command))
