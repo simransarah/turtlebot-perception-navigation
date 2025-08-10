@@ -4,6 +4,13 @@ import tf2_ros
 import math
 from std_msgs.msg import String
 from geometry_msgs.msg import Twist
+from nav_msgs.msg import Odometry
+
+class Pose:
+    def __init__(self):
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
 
 class MovementNode:
     def __init__(self):
@@ -26,6 +33,10 @@ class MovementNode:
         # Set up ROS publishers and subscribers
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
         self.command_sub = rospy.Subscriber('/voice_command', String, self.command_callback)
+        self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
+    
+        # Initialize the pose object to store robot's position
+        self.pose = Pose()
 
         # Start a timer to run the control_loop method 10 times a second 
         self.timer = rospy.Timer(rospy.Duration(0.1), self.control_loop)
@@ -64,7 +75,8 @@ class MovementNode:
         elif command.startswith("centre on"):
             self.move_cmd = Twist()
             self.target_object_name = command.split("centre on")[1].strip()
-            self.is_centring = True
+            # self.is_centring = True
+            self.centre_on_object()
             rospy.loginfo(f"Centred on object: '{self.target_object_name}'")
         else:
             rospy.logwarn(f"Unknown command: '{command}'")
@@ -105,39 +117,79 @@ class MovementNode:
                 # If we can't find the object's transform, log a warning and stop
                 rospy.logwarn(f"Transform error for '{self.target_object_name}': {e}")
                 self.cmd_vel_pub.publish(Twist()) 
-        elif self.is_centring:
-            # Logic for when the robot is centring on an object
-            if self.target_object_name is None:
-                return
-            
-            target_tf_frame = f"object_{self.target_object_name}"
-            try:
-                # Get the latest transform between the robot's base and the object
-                transform = self.tf_buffer.lookup_transform(
-                    'base_footprint', target_tf_frame, rospy.Time(0), rospy.Duration(1.0)
-                )
-                # Calculate angle to the target (object)
-                x = transform.transform.translation.x
-                y = transform.transform.translation.y
-                angle_to_target = math.atan2(y, x)
 
-                twist = Twist()
-                # Only rotate to center the object, do not move forward
-                if abs(angle_to_target) > 0.05:  # Tolerance for centering (radians)
-                    twist.angular.z = max(min(1.0 * angle_to_target, self.max_angular_speed), -self.max_angular_speed)
-                else:
-                    twist.angular.z = 0.0
-                    rospy.loginfo(f"Object '{self.target_object_name}' centered.")
-                    self.is_centring = False  # Stop centering once done
-
-                self.cmd_vel_pub.publish(twist)
-
-            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
-                rospy.logwarn(f"Transform error for '{self.target_object_name}': {e}")
-                self.cmd_vel_pub.publish(Twist())
         else:
             # If not navigating, just publish the velocity from the simple commands
             self.cmd_vel_pub.publish(self.move_cmd)
+
+    def centre_on_object(self):
+        if self.target_object_name is None:
+                return
+
+        target_tf_frame = f"object_{self.target_object_name.rstrip('.')}"
+        try:
+            # Get the latest transform between the robot's base and the object
+            transform = self.tf_buffer.lookup_transform(
+                'rachel', target_tf_frame, rospy.Time(0), rospy.Duration(1.0)
+            )
+            # Calculate angle to the target (object)
+            x = transform.transform.translation.x
+            # y = transform.transform.translation.y
+            z = transform.transform.translation.z
+            angle_to_target = math.atan2(x, z)
+            rospy.loginfo(f"x {x} z {z} angle {angle_to_target}")
+
+            twist = Twist()
+            if abs(angle_to_target) < 0.1:
+                # If we are facing the object, stop rotating
+                rospy.loginfo(f"Centred on '{self.target_object_name}', stopping rotation.")
+                self.is_centring = False
+            else:
+                rospy.loginfo(f"Rotating to centre on '{self.target_object_name}' at {angle_to_target} radians")
+                self.rotate(angle_to_target)
+            self.cmd_vel_pub.publish(twist)
+
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as e:
+            rospy.logwarn(f"Transform error for '{self.target_object_name}': {e}")
+            self.cmd_vel_pub.publish(Twist())
+        
+
+    def rotate(self, angle):
+        start_theta = self.pose.theta
+
+        cmd = Twist()
+        cmd.angular.z = 0.4
+
+        while not rospy.is_shutdown():
+            angle_turned = self.normalise_angle(self.pose.theta - start_theta)
+
+            if abs(angle_turned) >= angle:
+                break
+
+            self.cmd_vel_pub.publish(cmd)
+            
+        
+        self.cmd_vel_pub.publish(Twist())
+        rospy.loginfo("finsihed rotation!")
+    
+    def normalise_angle(self, angle):
+        """Keeps angle in range [-pi, pi]."""
+        while angle > math.pi:
+            angle -= 2 * math.pi
+        while angle < -math.pi:
+            angle += 2 * math.pi
+        return angle
+
+
+    def odom_callback(self, msg):
+        # Get (x, y, theta) specification from odometry topic
+        quaternion = [msg.pose.pose.orientation.x,msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
+        (roll, pitch, yaw) = tf.transformations.euler_from_quaternion(quaternion)
+
+        self.pose.theta = yaw
+        self.pose.x = msg.pose.pose.position.x
+        self.pose.y = msg.pose.pose.position.y
+
 
 def main():
     # Initialise the ROS node
