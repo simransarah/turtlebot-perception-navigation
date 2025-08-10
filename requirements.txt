@@ -3,3 +3,4 @@ ultralytics
 numpy
 opencv-python
 azure-cognitiveservices-speech
+azure-ai-language-conversations
