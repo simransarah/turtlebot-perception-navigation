@@ -10,8 +10,12 @@ project(turtlebot-perception-navigation)
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   geometry_msgs
+  message_filters
+  ros_numpy
   rospy
   sensor_msgs
+  std_msgs
+  tf2_ros
   vision_msgs
 )
 
@@ -106,9 +110,17 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES turtlebot-perception-navigation=
-#  CATKIN_DEPENDS cv_bridge geometry_msgs rospy sensor_msgs vision_msgs
-#  DEPENDS system_lib
+#  LIBRARIES turtlebot-perception-navigation
+  CATKIN_DEPENDS
+    cv_bridge
+    geometry_msgs
+    message_filters
+    ros_numpy
+    rospy
+    sensor_msgs
+    std_msgs
+    tf2_ros
+    vision_msgs
 )
 
 ###########
@@ -161,11 +173,12 @@ include_directories(
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
-# catkin_install_python(PROGRAMS
-#   scripts/my_python_script
-#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
-
+catkin_install_python(PROGRAMS
+  scripts/object_detection_node.py
+  scripts/movement_node.py
+  scripts/voice_command_node.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
 # install(TARGETS ${PROJECT_NAME}_node
