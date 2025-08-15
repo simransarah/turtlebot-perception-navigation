@@ -6,13 +6,15 @@ import azure.cognitiveservices.speech as speechsdk
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.language.conversations import ConversationAnalysisClient
 from std_msgs.msg import String
+import time
 
 class VoiceCommandNode:
     def __init__(self):
         # Publisher for the JSON commands
         self.cmd_pub = rospy.Publisher('/robot_command', String, queue_size=10)
+        
+        self.reconnecting = False
 
-       
         try:
             # Gets credentials from environment variables (needs to be sourced)
             self.speech_key = os.environ.get('SPEECH_KEY')
@@ -45,8 +47,8 @@ class VoiceCommandNode:
 
         # Connects callbacks for the speech recogniser
         self.speech_recognizer.recognized.connect(self.recognized_callback)
-        self.speech_recognizer.canceled.connect(self.stop_callback)
-        self.speech_recognizer.session_stopped.connect(self.stop_callback)
+        self.speech_recognizer.canceled.connect(self.canceled_callback)
+        self.speech_recognizer.session_stopped.connect(self.session_stopped_callback)
         
         # Starts listening for audio
         self.speech_recognizer.start_continuous_recognition()
@@ -113,7 +115,7 @@ class VoiceCommandNode:
         if not recognized_text:
             return
             
-        rospy.loginfo(f"Recognised: '{recognized_text}'")
+        rospy.loginfo(f"Voice command recognised: '{recognized_text}'")
         
         try:
             # Sends the text to CLU for understanding
@@ -130,11 +132,32 @@ class VoiceCommandNode:
         except Exception as e:
             rospy.logerr(f"Error processing CLU result: {e}")
             
-    def stop_callback(self, evt):
-        """Callback for session stop or cancellation."""
-        rospy.loginfo(f"Stopping recognition: {evt}")
-        self.speech_recognizer.stop_continuous_recognition()
-        rospy.signal_shutdown("Speech recognition stopped.")
+    def canceled_callback(self, evt):
+        """Callback for when the service cancels recognition, like due to a timeout."""
+        rospy.logwarn(f"Recognition Canceled: {evt.reason}")
+        if evt.reason == speechsdk.CancellationReason.Error:
+            rospy.logerr(f"Cancellation Error Details: {evt.error_details}")
+            # Checks for the inactivity timeout error code
+            if "1006" in str(evt.error_details):
+                rospy.loginfo("Inactivity timeout detected. Attempting to reconnect.")
+                self.reconnecting = True
+                self.speech_recognizer.stop_continuous_recognition()
+            else:
+                rospy.logerr("An  error occurred. Shutting down voice node.")
+                rospy.signal_shutdown("Speech recognition error.")
+
+    def session_stopped_callback(self, evt):
+        """Callback for when the recognition session stops."""
+        rospy.loginfo(f"Session stopped. Reason: {evt}")
+        # If the session stopped because we're reconnecting, start it again.
+        if self.reconnecting:
+            rospy.loginfo("Re-starting continuous recognition.")
+            time.sleep(1) # Give it a second before reconnecting
+            self.speech_recognizer.start_continuous_recognition()
+            self.reconnecting = False
+        else:
+            # Otherwise, it was an intentional stop, so we can shut down.
+            rospy.signal_shutdown("Speech recognition stopped.")
 
 def main():
     rospy.init_node('voice_command_node')
