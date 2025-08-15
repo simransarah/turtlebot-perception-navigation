@@ -1,16 +1,18 @@
 <launch>
-    <include file="$(find turtlebot3_gazebo)/launch/turtlebot3_world.launch"/>
-
+    <param name="robot_description" command="$(find xacro)/xacro --inorder $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />
+    <include file="$(find turtlebot3_gazebo)/launch/turtlebot3_empty_world.launch">
+        <arg name="model" value="waffle" />
+    </include>
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+        <param name="publish_frequency" type="double" value="50.0" />
+        <param name="tf_prefix" value="" />
+    </node>
     <node name="object_detection_node" pkg="turtlebot-perception-navigation" type="object_detection_node.py" output="screen">
         <param name="yolo_model_path" value="$(find turtlebot-perception-navigation)/yolo/yolo11n.pt"/>
         <param name="confidence_threshold" value="0.5" />
     </node>
-
     <node name="movement_node" pkg="turtlebot-perception-navigation" type="movement_node.py" output="screen">
-        <param name="stop_distance" value="0.8" />
+        <param name="stop_distance" value="0.2" />
     </node>
-
     <node name="voice_command_node" pkg="turtlebot-perception-navigation" type="voice_command_node.py" output="screen"/>
-
-    <node pkg="tf2_ros" type="static_transform_publisher" name="camera_tf_broadcaster" args="0.069 -0.047 0.117 -1.57 0 -1.57 base_footprint camera_rgb_optical_frame" />
 </launch>
